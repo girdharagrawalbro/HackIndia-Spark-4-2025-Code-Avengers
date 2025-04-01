@@ -104,7 +104,7 @@ export default function ApproveIssuers() {
 
     if (isAuthenticated === null) {
         return (
-            <div className="flex h-96 justify-center items-center py-24">
+            <div className="flex h-96 justify-center items-center py-24"  style={{ minHeight:"500px" }}>
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
             </div>
         );
@@ -171,8 +171,10 @@ export default function ApproveIssuers() {
     );
 
     return (
-        <div className="sm:w-auto w-full mx-auto p-4 sm:p-6 bg-white rounded-xl shadow-sm sm:shadow-md overflow-hidden relative">
-            <Toaster position="top-center" />
+        <div className="relative flex items-center w-9/12 justify-center h-96 p-4" style={{ minHeight:"500px" }}>
+        <div className="absolute bottom-0  bg-gradient-to-b from-blue-50 to-white w-full h-3/6 z-10"></div>
+  
+        <div className="sm:w-auto border-2 border-blue-900 z-20 w-full mx-auto p-4 sm:p-6 bg-white rounded-xl shadow-sm sm:shadow-md overflow-hidden relative">
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                 <div>
@@ -231,12 +233,16 @@ export default function ApproveIssuers() {
                 </>
             )}
         </div>
+        </div>
     );
 }   
 
 function LoginForm() {
     return (
-        <div className="sm:min-w-3xl w-full mx-auto mt-8 sm:mt-10 p-4 sm:p-6 bg-white rounded-lg shadow-sm sm:shadow-md max-w-md">
+        <div className="relative flex items-center w-9/12 justify-center h-96 p-4" style={{ minHeight:"500px" }}>
+        <div className="absolute bottom-0  bg-gradient-to-b from-blue-50 to-white w-full h-3/6 z-10"></div>
+  
+        <div className="sm:min-w-3xl border-2 border-blue-900 z-20 w-full mx-auto mt-8 sm:mt-10 p-4 sm:p-6 bg-white rounded-lg shadow-sm sm:shadow-md max-w-md">
             <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 flex items-center">
                 <FiLogOut className="mr-2" /> Admin Login
             </h2>
@@ -258,6 +264,7 @@ function LoginForm() {
                     Login
                 </button>
             </form>
+        </div>
         </div>
     );
 }
