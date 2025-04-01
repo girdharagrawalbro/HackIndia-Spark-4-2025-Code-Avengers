@@ -112,7 +112,10 @@ export default function IssuerDashboard() {
   };
 
   return (
-    <div className="sm:w-auto w-full mx-auto p-4 sm:p-6">
+    <div className="relative flex items-center w-9/12 justify-center h-96 p-4" style={{ minHeight:"500px" }}>
+    <div className="absolute bottom-0  bg-gradient-to-b from-blue-50 to-white w-full h-3/6 z-10"></div>
+
+    <div className="sm:w-3xl border-2 rounded-xl border-blue-900 z-20 w-full mx-auto p-4 sm:p-6">
       <Toaster position="top-center" />
 
       {/* Header Section */}
@@ -246,6 +249,7 @@ export default function IssuerDashboard() {
           ))}
         </div>
       )}
+    </div>
     </div>
   );
 }
