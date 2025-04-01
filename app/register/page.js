@@ -43,7 +43,9 @@ export default function RegisterIssuer() {
   };
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-white rounded-xl shadow-md overflow-hidden space-y-6">
+    <div className="relative flex items-center w-9/12 justify-center h-96 p-4" style={{ minHeight:"500px" }}>
+      <div className="absolute bottom-0  bg-gradient-to-b from-blue-50 to-white w-full h-3/6 z-10"></div>
+    <div className="max-w-lg w-lg p-6 mt-5 bg-white rounded-xl border-2 border-blue-900 shadow-md overflow-hidden space-y-6 z-20 ">
       <div className="text-center">
         <h2 className="text-2xl font-bold text-gray-800">Register as Issuer</h2>
         <p className="text-gray-600 mt-1">Please provide your details to register</p>
@@ -108,6 +110,7 @@ export default function RegisterIssuer() {
           {status}
         </div>
       )}
+    </div>
     </div>
   );
 }
