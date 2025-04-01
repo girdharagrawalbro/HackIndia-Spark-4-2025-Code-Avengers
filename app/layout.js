@@ -5,6 +5,7 @@ import Footer from './components/Footer';
 import { Toaster } from "react-hot-toast";
 import MotionWrapper from './components/MotionWrapper';
 import { AnimatePresence, motion } from 'framer-motion';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,9 +29,10 @@ export default function RootLayout({ children }) {
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <MotionWrapper>
-
+        <ErrorBoundary>
           <Header />
           <section className="main flex flex-col items-center">
+                    <br />
                     <br />
             
             {children}
@@ -40,6 +42,7 @@ export default function RootLayout({ children }) {
             reverseOrder={false}
           />
           <Footer />
+          </ErrorBoundary>
         </MotionWrapper>
       </body>
     </html>
