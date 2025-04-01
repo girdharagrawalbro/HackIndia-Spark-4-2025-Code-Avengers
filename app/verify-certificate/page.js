@@ -1,354 +1,255 @@
 "use client";
-import React, { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
-import { Suspense , useCallback} from "react";
+import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { contractABI, contractAddress } from "../utils/constants";
-import { uploadToIPFS } from "../utils/uploadToIPFS";
-import Webcam from "react-webcam";
-import jsQR from "jsqr";
+import { FiFileText, FiLoader, FiCalendar, FiUser, FiAward, FiExternalLink, FiTrash2 } from "react-icons/fi";
 import toast, { Toaster } from 'react-hot-toast';
-import { FiCamera, FiUpload, FiCheck, FiX, FiHash, FiImage, FiExternalLink } from 'react-icons/fi';
 
-const VerifyCertificate = () => {
-  const searchParams = useSearchParams();
-  const certificateHashFromUrl = searchParams.get("hash");
-  const [certificateHash, setCertificateHash] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [isValid, setIsValid] = useState(null);
-  const [file, setFile] = useState(null);
-  const [fileName, setFileName] = useState("");
-  const [certificateDetails, setCertificateDetails] = useState(null);
-  const webcamRef = useRef(null);
-  const [scanning, setScanning] = useState(false);
-  const [verificationMethod, setVerificationMethod] = useState("hash");
+export default function IssuerDashboard() {
+  const [certificates, setCertificates] = useState([]);
+  const [loading, setLoading] = useState({
+    refresh: false,
+    withdraw: false,
+    revoke: {}
+  });
+  const [issuerAddress, setIssuerAddress] = useState("");
 
   useEffect(() => {
-    if (certificateHashFromUrl) {
-      setCertificateHash(certificateHashFromUrl);
-      setVerificationMethod("hash");
-      // Automatically verify if hash is present in URL
-      verifyCertificate(certificateHashFromUrl);
-    }
-  }, [certificateHashFromUrl]);
-
-  useEffect(() => {
-    // Reset hash when changing verification method (except when coming from URL)
-    if (!certificateHashFromUrl) {
-      setCertificateHash("");
-    }
-    setIsValid(null);
-    setCertificateDetails(null);
-  }, [verificationMethod, certificateHashFromUrl]);
-
-  const fetchCertificateDetails  = useCallback(async (hash) => {
-    if (!window.ethereum) return;
-    
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(contractAddress, contractABI, provider);
-      const certificate = await contract.certificates(hash);
-      
-      setCertificateDetails({
-        recipientName: certificate.recipientName,
-        courseName: certificate.courseName,
-        issueDate: new Date(Number(certificate.issueDate) * 1000).toLocaleDateString(),
-        ipfsUrl: certificate.ipfsUrl || null
-      });
-    } catch (error) {
-      console.error("Error fetching certificate details:", error);
-    }
+    fetchIssuedCertificates();
   }, []);
 
-  const verifyCertificate = useCallback(async (hash = certificateHash) => {
+  const fetchIssuedCertificates = async () => {
+    if (!window.ethereum) {
+      toast.error("Please install MetaMask");
+      setLoading(prev => ({ ...prev, refresh: false }));
+      return;
+    }
+
+    setLoading(prev => ({ ...prev, refresh: true }));
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const address = await signer.getAddress();
+      setIssuerAddress(address);
+
+      const contract = new ethers.Contract(contractAddress, contractABI, signer);
+      const certificateHashes = await contract.getCertificatesByIssuer(address);
+
+      const certificateData = await Promise.all(
+        certificateHashes.map(async (hash) => {
+          const certificate = await contract.certificates(hash);
+          return {
+            hash,
+            recipientName: certificate.recipientName,
+            courseName: certificate.courseName,
+            issueDate: new Date(Number(certificate.issueDate) * 1000).toLocaleDateString(),
+            isValid: certificate.isValid,
+            ipfsUrl: certificate.ipfsUrl || "#"
+          };
+        })
+      );
+
+      setCertificates(certificateData);
+      toast.success(`Found ${certificateData.length} certificates`);
+    } catch (error) {
+      console.error("Error fetching certificates", error);
+      toast.error("Failed to fetch certificates");
+    } finally {
+      setLoading(prev => ({ ...prev, refresh: false }));
+    }
+  };
+
+  const revokeCertificate = async (certificateHash) => {
     if (!window.ethereum) {
       toast.error("Please install MetaMask");
       return;
     }
-    if (!hash) {
-      toast.error("Please enter a certificate hash");
+
+    setLoading(prev => ({ ...prev, revoke: { ...prev.revoke, [certificateHash]: true } }));
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+      const tx = await contract.revokeCertificate(certificateHash);
+      await tx.wait();
+      toast.success("Certificate revoked successfully!");
+      await fetchIssuedCertificates();
+    } catch (error) {
+      console.error("Error revoking certificate:", error);
+      toast.error(error.reason || "Failed to revoke certificate");
+    } finally {
+      setLoading(prev => ({ ...prev, revoke: { ...prev.revoke, [certificateHash]: false } }));
+    }
+  };
+
+  const withdrawDeposit = async () => {
+    if (!window.ethereum) {
+      toast.error("Please install MetaMask");
       return;
     }
 
-    setLoading(true);
-    setIsValid(null);
-    setCertificateDetails(null); 
-    const loadingToast = toast.loading("Verifying certificate...");
-
+    setLoading(prev => ({ ...prev, withdraw: true }));
     try {
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(contractAddress, contractABI, provider);
-      
-      // Verify certificate
-      const result = await contract.verifyCertificate(hash);
-      setIsValid(result);
-      
-      // Fetch certificate details if valid
-      if (result) {
-        await fetchCertificateDetails(hash);
-      }
-      
-      toast[result ? "success" : "error"](
-        result ? " Certificate is valid!" : " Invalid Certificate",
-        { id: loadingToast }
-      );
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(contractAddress, contractABI, signer);
+
+      const tx = await contract.withdrawDeposit();
+      await tx.wait();
+      toast.success("Deposit withdrawn successfully!");
     } catch (error) {
-      console.error(error);
-      setIsValid(false);
-      toast.error("Verification failed. See console for details.", { id: loadingToast });
+      console.error("Error withdrawing deposit:", error);
+      toast.error(error.reason || "Withdrawal failed");
     } finally {
-      setLoading(false);
+      setLoading(prev => ({ ...prev, withdraw: false }));
     }
-  }, [certificateHash, fetchCertificateDetails]);
-
-  const handleFileUpload = async (e) => {
-    const uploadedFile = e.target.files[0];
-     if (!uploadedFile) {
-    setCertificateHash(""); 
-    return;
-  }
-
-    setFile(uploadedFile);
-    setFileName(uploadedFile.name);
-    setLoading(true);
-    const loadingToast = toast.loading("Processing certificate file...");
-
-      try {
-        const ipfsUrl = await uploadToIPFS(uploadedFile);
-        if (!ipfsUrl) throw new Error("IPFS Upload Failed");
-
-        const certHash = ethers.keccak256(ethers.toUtf8Bytes(ipfsUrl));
-        setCertificateHash(certHash);
-        toast.success("File processed successfully!", { id: loadingToast });
-        await verifyCertificate(certHash);
-      } catch (error) {
-        console.error(error);
-        setIsValid(false);
-        toast.error("Failed to process file. See console for details.", { id: loadingToast });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-  const captureQR = () => {
-    setScanning(true);
-    setVerificationMethod("qr");
   };
 
-  useEffect(() => {
-    if (!scanning || verificationMethod !== "qr") return;
-
-    const interval = setInterval(() => {
-      if (!webcamRef.current) return;
-      const imageSrc = webcamRef.current.getScreenshot();
-      if (!imageSrc) return;
-
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      const img = new Image();
-      img.src = imageSrc;
-
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0, img.width, img.height);
-        const imageData = ctx.getImageData(0, 0, img.width, img.height);
-        const qrCode = jsQR(imageData.data, img.width, img.height);
-
-        if (qrCode) {
-          setCertificateHash(qrCode.data);
-          setScanning(false);
-          toast.success("QR Code scanned successfully!");
-          clearInterval(interval);
-          verifyCertificate(qrCode.data);
-        }
-      };
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [scanning, verificationMethod, verifyCertificate]);
-
-  const verificationMethods = [
-    { id: "hash", name: "Enter Hash", icon: <FiHash className="mr-2" /> },
-    { id: "qr", name: "Scan QR Code", icon: <FiCamera className="mr-2" /> },
-    { id: "file", name: "Upload File", icon: <FiUpload className="mr-2" /> },
-  ];
+  const copyAddress = () => {
+    navigator.clipboard.writeText(issuerAddress);
+    toast.success("Address copied to clipboard!");
+  };
 
   return (
-    <Suspense fallback={<div>Loading...</div>}>
-    <div className="max-w-md mx-auto p-6 bg-white rounded-xl shadow-md overflow-hidden">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Verify Certificate</h2>
-        <p className="text-gray-600">Choose a method to verify your certificate</p>
-      </div>
+    <div className="relative flex items-center w-9/12 justify-center h-96 p-4" style={{ minHeight:"500px" }}>
+    <div className="absolute bottom-0  bg-gradient-to-b from-blue-50 to-white w-full h-3/6 z-10"></div>
 
-      <div className="flex justify-center space-x-2 mb-6">
-        {verificationMethods.map((method) => (
-          <button
-            key={method.id}
-            onClick={() => setVerificationMethod(method.id)}
-            className={`px-4 py-2 rounded-md text-sm font-medium flex items-center ${
-              verificationMethod === method.id
-                ? "bg-blue-600 text-white"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-            }`}
-          >
-            {method.icon}
-            {method.name}
-          </button>
-        ))}
-      </div>
+    <div className="sm:w-3xl border-2 rounded-xl border-blue-900 z-20 w-full mx-auto p-4 sm:p-6">
+      <Toaster position="top-center" />
 
-      {verificationMethod === "hash" && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Certificate Hash
-            </label>
-            <input
-              type="text"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter certificate hash"
-              value={certificateHash}
-              onChange={(e) => setCertificateHash(e.target.value)}
-            />
-          </div>
-          <button
-            onClick={() => verifyCertificate()}
-            disabled={loading}
-            className={`w-full py-2 px-4 rounded-md text-white font-medium ${
-              loading ? "bg-blue-400" : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {loading ? "Verifying..." : "Verify Certificate"}
-          </button>
-        </div>
-      )}
-
-      {verificationMethod === "qr" && (
-        <div className="space-y-4">
-          {scanning ? (
-            <>
-              <div className="relative aspect-square border-2 border-dashed border-gray-300 rounded-lg overflow-hidden">
-                <Webcam
-                  ref={webcamRef}
-                  screenshotFormat="image/png"
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-              </div>
-              <button
-                onClick={() => setScanning(false)}
-                className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-md"
+      {/* Header Section */}
+      <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row justify-between items-start sm:items-center mb-6">
+        <div className="w-full sm:w-auto">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 flex items-center">
+            <FiFileText className="mr-2 sm:mr-3 text-blue-600" />
+            Certificates Issued
+          </h1>
+          {issuerAddress && (
+            <p className="text-gray-600 mt-2 text-sm sm:text-base flex items-center">
+              Issuer:
+              <span
+                className="ml-2 font-mono text-xs sm:text-sm bg-gray-100 px-2 py-1 rounded cursor-pointer hover:bg-gray-200"
+                onClick={copyAddress}
+                title="Click to copy"
               >
-                Cancel Scanning
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="p-8 bg-gray-100 rounded-lg text-center">
-                <FiCamera className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-gray-500">Click below to scan QR code</p>
-              </div>
-              <button
-                onClick={captureQR}
-                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center"
-              >
-                <FiCamera className="mr-2" />
-                Scan QR Code
-              </button>
-            </>
+                {issuerAddress.slice(0, 6)}...{issuerAddress.slice(-4)}
+              </span>
+            </p>
           )}
         </div>
-      )}
-
-      {verificationMethod === "file" && (
-        <div className="space-y-4">
-          <div className="flex items-center">
-            <label className="flex flex-col items-center px-4 py-6 bg-gray-50 rounded-md border-2 border-dashed border-gray-300 cursor-pointer hover:bg-gray-100 w-full">
-              <FiUpload className="h-8 w-8 text-gray-400 mb-2" />
-              <span className="text-sm font-medium text-gray-700">
-                {fileName || "Click to upload certificate file"}
-              </span>
-              <input
-                type="file"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-            </label>
-            {fileName && (
-              <button
-                onClick={() => {
-                  setFile(null);
-                  setFileName("");
-                }}
-                className="ml-2 p-2 text-red-500 hover:text-red-700"
-              >
-                <FiX className="h-5 w-5" />
-              </button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button
+            onClick={fetchIssuedCertificates}
+            disabled={loading.refresh}
+            className="flex-1 sm:flex-none px-3 py-2 sm:px-4 text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center justify-center"
+          >
+            {loading.refresh ? (
+              <FiLoader className="animate-spin mr-2" />
+            ) : (
+              <FiLoader className="mr-2" />
             )}
-          </div>
-          {fileName && !loading && (
-            <button
-              onClick={() => verifyCertificate()}
-              className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            Refresh
+          </button>
+          <button
+            onClick={withdrawDeposit}
+            disabled={loading.withdraw}
+            className={`flex-1 sm:flex-none px-3 py-2 sm:px-4 text-sm sm:text-base rounded-md flex items-center justify-center ${loading.withdraw
+                ? 'bg-yellow-400 cursor-not-allowed'
+                : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+              }`}
+          >
+            {loading.withdraw ? (
+              <FiLoader className="animate-spin mr-2" />
+            ) : (
+              <FiExternalLink className="mr-2" />
+            )}
+            Withdraw
+          </button>
+        </div>
+      </div>
+
+      {/* Content Section */}
+      {loading.refresh ? (
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      ) : certificates.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg">
+          <FiFileText className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-gray-400" />
+          <h3 className="mt-2 text-lg font-medium text-gray-900">No certificates issued yet</h3>
+          <p className="mt-1 text-sm sm:text-base text-gray-500">Certificates you issue will appear here</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
+          {certificates.map((certificate, index) => (
+            <div
+              key={index}
+              className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-100"
             >
-              Verify Certificate
-            </button>
-          )}
-        </div>
-      )}
+              <div className="p-4 sm:p-5 md:p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm sm:text-base md:text-lg font-bold text-gray-900 mb-1 flex items-center truncate">
+                      <FiAward className="mr-2 text-blue-500 flex-shrink-0" />
+                      <span className="truncate">{certificate.courseName}</span>
+                    </h3>
+                    <p className="text-xs sm:text-sm md:text-base text-gray-600 mb-2 sm:mb-3 flex items-center truncate">
+                      <FiUser className="mr-2 flex-shrink-0" />
+                      <span className="truncate">{certificate.recipientName}</span>
+                    </p>
+                  </div>
+                  <span
+                    className={`px-2 py-1 text-xs rounded-full flex-shrink-0 ${certificate.isValid
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                      }`}
+                  >
+                    {certificate.isValid ? "Valid" : "Invalid"}
+                  </span>
+                </div>
 
-      {isValid !== null && (
-        <div className="mt-6 space-y-4">
-          <div className={`p-4 rounded-md ${
-            isValid ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"
-          }`}>
-            <div className="flex items-center">
-              {isValid ? (
-                <FiCheck className="h-6 w-6 text-green-500 mr-2" />
-              ) : (
-                <FiX className="h-6 w-6 text-red-500 mr-2" />
-              )}
-              <span className="font-medium">
-                {isValid ? "Certificate is valid!" : "Certificate is invalid"}
-              </span>
-            </div>
-            {certificateHash && (
-              <div className="mt-2 text-xs break-all bg-white/50 p-2 rounded">
-                <span className="font-medium">Hash:</span> {certificateHash}
-              </div>
-            )}
-          </div>
+                <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-100">
+                  <p className="text-xs sm:text-sm text-gray-500 flex items-center">
+                    <FiCalendar className="mr-2 flex-shrink-0" />
+                    Issued: {certificate.issueDate}
+                  </p>
 
-          {isValid && certificateDetails && (
-            <div className="bg-gray-50 p-4 rounded-md">
-              <h3 className="font-medium text-gray-800 mb-2">Certificate Details</h3>
-              <div className="space-y-2">
-                <p><span className="font-medium">Recipient:</span> {certificateDetails.recipientName}</p>
-                <p><span className="font-medium">Course:</span> {certificateDetails.courseName}</p>
-                <p><span className="font-medium">Issued Date:</span> {certificateDetails.issueDate}</p>
-                
-                {certificateDetails.ipfsUrl && (
-                  <div className="mt-4">
+                  <div className="mt-3 sm:mt-4 flex space-x-2">
                     <a
-                      href={certificateDetails.ipfsUrl}
+                      href={`/verify-certificate?hash=${certificate.hash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center px-3 py-1.5 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200"
+                      className="flex-1 py-1 sm:py-1.5 px-2 sm:px-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded text-xs sm:text-sm font-medium flex items-center justify-center"
                     >
-                      <FiImage className="mr-2" />
-                      View Certificate Image
+                      <FiExternalLink className="mr-1 sm:mr-2" />
+                      Verify
                     </a>
+                    {certificate.isValid && (
+                      <button
+                        onClick={() => revokeCertificate(certificate.hash)}
+                        disabled={loading.revoke[certificate.hash]}
+                        className={`flex-1 py-1 sm:py-1.5 px-2 sm:px-3 rounded text-xs sm:text-sm font-medium flex items-center justify-center ${loading.revoke[certificate.hash]
+                            ? 'bg-gray-300 cursor-not-allowed'
+                            : 'bg-red-500 hover:bg-red-600 text-white'
+                          }`}
+                      >
+                        {loading.revoke[certificate.hash] ? (
+                          <FiLoader className="animate-spin mr-1 sm:mr-2" />
+                        ) : (
+                          <FiTrash2 className="mr-1 sm:mr-2" />
+                        )}
+                        Revoke
+                      </button>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>
-    </Suspense> 
+    </div>
   );
-};
-
-export default VerifyCertificate;
+}
