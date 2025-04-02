@@ -14,10 +14,9 @@ CertChain is a decentralized certificate verification system built on blockchain
 - **Blockchain Security:** Immutable ledger ensures data integrity.
 
 ## Technology Stack
-- **Frontend:** React.js / Next.js
-- **Backend:** Node.js / Express.js
+- **Frontend & Backend :** Next.js
 - **Blockchain:** Ethereum / Solidity (Smart Contracts)
-- **Database:** MongoDB
+- **TestNet :** Sepolia
 - **Wallet Integration:** MetaMask
 
 ## Installation & Setup
